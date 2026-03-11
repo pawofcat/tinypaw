@@ -30,37 +30,35 @@
 - 自动管理会话历史（保留最近 20 条）
 - 错误处理和重试
 
-### 2. 工具系统 (`src/agent.js` - tools 对象)
+### 2. 工具系统 (`src/agent.js` - tools 对象）
 
-```
-工具注册表:
-┌──────────────┬──────────────────────────────────────┐
-│   工具名     │            功能描述                   │
-├──────────────┼──────────────────────────────────────┤
-│ read         │ 读取文件内容                          │
-│ write        │ 写入文件内容                          │
-│ edit         │ 编辑文件（文本替换）                  │
-│ exec         │ 执行 shell 命令                       │
-│ web_search   │ 网络搜索（DuckDuckGo）                │
-│ web_fetch    │ 抓取网页内容                          │
-│ memory_search│ 搜索记忆文件                          │
-│ memory_get   │ 读取记忆文件                          │
-│ memory_append│ 追加记忆内容                          │
-└──────────────┴──────────────────────────────────────┘
-```
+**已实现 9 个核心工具**：
 
-**工具接口**:
+| 工具名 | 功能描述 |
+|--------|---------|
+| read | 读取文件内容 |
+| write | 写入文件内容 |
+| edit | 编辑文件（文本替换） |
+| exec | 执行 shell 命令 |
+| web_search | 网络搜索（DuckDuckGo） |
+| web_fetch | 抓取网页内容 |
+| memory_search | 搜索记忆文件 |
+| memory_get | 读取记忆文件 |
+| memory_append | 追加记忆内容 |
+
+**工具接口**（实际代码）:
 ```javascript
-{
-  description: string,      // 工具描述（用于 LLM）
-  parameters: {             // 参数定义
-    paramName: 'string'
-  },
-  execute: async (args) => {
-    // 执行逻辑
-    return { success: true/false, ... }
+const tools = {
+  read: {
+    description: '读取文件内容',
+    parameters: { path: 'string' },
+    execute: async ({ path }) => {
+      const content = await readFile(path, 'utf-8');
+      return { success: true, content: content.slice(0, 50000) };
+    }
   }
-}
+  // ... 其他工具
+};
 ```
 
 ### 3. 会话管理
@@ -102,8 +100,18 @@ Message = {
 3. 环境变量
 4. 默认值
 
-### 5. 技能系统
+### 5. 技能系统（预留）
 
+当前版本仅包含技能的目录结构和文档约定（`SKILL.md`），**未实现自动加载和匹配逻辑**。
+
+**当前状态**:
+- ✅ `skills/` 目录结构
+- ✅ `SKILL.md` 文档约定
+- ✅ 示例技能（memory）
+- ❌ 自动扫描和加载
+- ❌ 技能匹配逻辑
+
+**未来实现**:
 ```
 技能加载流程:
 1. 扫描 skills/ 目录
@@ -112,10 +120,6 @@ Message = {
 4. 根据用户输入匹配合适的技能
 5. 执行技能对应的工具组合
 ```
-
-**技能匹配**（简化版）:
-- 关键词匹配
-- 默认 fallback 到通用 agent
 
 ## 数据流
 
@@ -172,8 +176,8 @@ Message = {
 ### 简化的功能
 - ⚠️ 配置：单 JSON 文件 vs 多层配置
 - ⚠️ 记忆：文件存储 vs 向量检索
-- ⚠️ 技能：关键词匹配 vs 完整 SDK
-- ⚠️ 工具：10 个核心工具 vs 50+ 工具
+- ⚠️ 技能：文档约定 vs 完整 SDK（未实现自动加载）
+- ⚠️ 工具：9 个核心工具 vs 50+ 工具
 
 ## 扩展方向
 

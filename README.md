@@ -16,16 +16,12 @@ TinyPaw 是 OpenClaw 的轻量级版本，专注于核心功能：
 ```
 tinypaw/
 ├── src/
-│   ├── agent.ts          # Agent 核心（LLM 调用 + tool calling）
-│   ├── tools.ts          # 工具注册与执行
-│   ├── session.ts        # 会话管理
-│   ├── skills.ts         # 技能系统
-│   ├── config.ts         # 配置管理
-│   └── cli.ts            # 命令行接口
+│   ├── agent.js          # Agent 核心（LLM 调用 + tool calling）
+│   └── cli.js            # 命令行接口
 ├── skills/               # 技能插件目录
-│   └── example/
+│   └── memory/
 │       └── SKILL.md
-├── memory/               # 记忆存储
+├── memory/               # 记忆存储（运行时创建）
 ├── config.json           # 配置文件
 └── package.json
 ```
@@ -36,26 +32,27 @@ tinypaw/
 |------|----------|---------|----------|
 | Gateway 服务器 | ✅ 完整 HTTP/WebSocket | ❌ 移除 | 仅保留 CLI |
 | 多 Channel 支持 | ✅ Telegram/WhatsApp/Discord 等 | ❌ 移除 | 仅 CLI 交互 |
-| Browser 工具 | ✅ Playwright 完整支持 | ⚠️ 简化 | 仅 web_search/web_fetch |
-| 子 Agent | ✅ sessions_spawn/subagents | ⚠️ 简化 | 基础子任务支持 |
-| 技能系统 | ✅ 完整 SDK | ✅ 保留 | 简化为 SKILL.md 约定 |
+| Browser 工具 | ✅ Playwright 完整支持 | ❌ 移除 | 预留 web_search/web_fetch |
+| 子 Agent | ✅ sessions_spawn/subagents | ❌ 移除 | 预留扩展 |
+| 技能系统 | ✅ 完整 SDK | ⚠️ 简化 | SKILL.md 约定（未实现自动加载） |
 | 记忆系统 | ✅ MEMORY.md + 向量检索 | ✅ 保留 | 简化为文件存储 |
-| 配置系统 | ✅ 多层配置 + UI | ⚠️ 简化 | 单 JSON 文件 |
-| 工具数量 | ✅ 50+ 工具 | ⚠️ 简化 | 核心 10 工具 |
-| 代码行数 | ~100k | ~2k | 精简 98% |
+| 配置系统 | ✅ 多层配置 + UI | ✅ 简化 | 单 JSON 文件 |
+| 工具数量 | ✅ 50+ 工具 | ✅ 简化 | 核心 9 工具 |
+| 代码行数 | ~100k | ~500 | 精简 99.5% |
 
-## 核心工具
+## 核心工具（已实现 9 个）
 
 1. **read** - 读取文件
 2. **write** - 写入文件
-3. **edit** - 编辑文件
+3. **edit** - 编辑文件（文本替换）
 4. **exec** - 执行 shell 命令
-5. **web_search** - 网络搜索
+5. **web_search** - 网络搜索（DuckDuckGo）
 6. **web_fetch** - 抓取网页
 7. **memory_search** - 记忆检索
 8. **memory_get** - 记忆读取
-9. **sessions_spawn** - 生成子任务
-10. **message** - 消息发送（预留）
+9. **memory_append** - 追加记忆
+
+**预留扩展**：sessions_spawn（子任务）、message（消息发送）、browser（浏览器自动化）
 
 ## 快速开始
 

@@ -29,7 +29,7 @@ async function main() {
   const today = new Date().toISOString().split('T')[0];
   try {
     const { readFile } = await import('node:fs/promises');
-    const memoryContent = await readFile(`./memory/${today}.md', 'utf-8').catch(() => '');
+    const memoryContent = await readFile(`./memory/${today}.md`, 'utf-8').catch(() => '');
     if (memoryContent) {
       addToSession(sessionKey, 'system', `今日记忆：${memoryContent.slice(0, 500)}`);
     }
