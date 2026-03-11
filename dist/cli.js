@@ -3,28 +3,37 @@
  * TinyPaw CLI
  * 命令行交互接口
  */
-import { loadConfig, agentLoop, addToSession, getSession } from './agent.js';
+import { loadConfig, agentLoop, initializeSessionStore, getTokenCounter } from './agent.js';
 import { createInterface } from 'node:readline';
 import { mkdir, readFile } from 'node:fs/promises';
 async function main() {
-    console.log('🦎 TinyPaw v0.1.0 - 极简 Agent 框架 (TypeScript)');
+    console.log('🦎 TinyPaw v0.2.0 - 极简 Agent 框架 (TypeScript)');
     console.log('输入 "exit" 或 Ctrl+C 退出\n');
     await loadConfig();
     await mkdir('./memory', { recursive: true }).catch(() => { });
+    // 初始化会话存储
+    await initializeSessionStore();
     const rl = createInterface({
         input: process.stdin,
         output: process.stdout
     });
     const sessionKey = 'default';
+    // 加载今日记忆
     const today = new Date().toISOString().split('T')[0];
     try {
         const memoryContent = await readFile(`./memory/${today}.md`, 'utf-8').catch(() => '');
         if (memoryContent) {
-            addToSession(sessionKey, 'system', `今日记忆：${memoryContent.slice(0, 500)}`);
+            console.log(`📖 已加载今日记忆 (${today})`);
         }
     }
     catch (e) {
         // 忽略
+    }
+    // 显示会话统计
+    const counter = getTokenCounter();
+    const stats = counter.getStats();
+    if (stats.requestCount > 0) {
+        console.log(`📊 Token 使用：${stats.totalTokens} tokens (${stats.requestCount} 次请求)`);
     }
     const prompt = () => {
         rl.question('🦎> ', async (input) => {
@@ -35,18 +44,18 @@ async function main() {
             }
             if (trimmed.toLowerCase() === 'exit' || trimmed.toLowerCase() === 'quit') {
                 console.log('👋 再见！');
+                // 显示最终统计
+                const finalStats = getTokenCounter().getStats();
+                if (finalStats.requestCount > 0) {
+                    console.log(`\n📊 本次会话：${finalStats.totalTokens} tokens, ${finalStats.requestCount} 次请求`);
+                }
                 rl.close();
                 return;
             }
-            addToSession(sessionKey, 'user', trimmed);
             try {
                 console.log('\n🤔 思考中...\n');
-                const history = getSession(sessionKey);
-                const response = await agentLoop(trimmed, history.slice(-10));
-                console.log('\n💬', response || '(无回复)');
-                if (response) {
-                    addToSession(sessionKey, 'assistant', response);
-                }
+                const response = await agentLoop(trimmed, sessionKey);
+                console.log('\n💬', response);
             }
             catch (e) {
                 console.error('❌ 错误:', e.message);

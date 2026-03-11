@@ -2,6 +2,8 @@
 
 🦎 一个极简的类似 OpenClaw 的 agent 框架，保留核心功能，每部分选择性简化。
 
+**当前版本**: v0.2.0 (稳定性增强)
+
 ## 项目定位
 
 TinyPaw 是 OpenClaw 的轻量级版本，专注于核心功能：
@@ -30,18 +32,20 @@ tinypaw/
 
 ## 与 OpenClaw 的对比
 
-| 功能 | OpenClaw | TinyPaw | 简化说明 |
+| 功能 | OpenClaw | TinyPaw v0.2.0 | 简化说明 |
 |------|----------|---------|----------|
 | Gateway 服务器 | ✅ 完整 HTTP/WebSocket | ❌ 移除 | 仅保留 CLI |
 | 多 Channel 支持 | ✅ Telegram/WhatsApp/Discord 等 | ❌ 移除 | 仅 CLI 交互 |
 | Browser 工具 | ✅ Playwright 完整支持 | ❌ 移除 | 预留 web_search/web_fetch |
 | 子 Agent | ✅ sessions_spawn/subagents | ❌ 移除 | 预留扩展 |
 | 技能系统 | ✅ 完整 SDK | ⚠️ 简化 | SKILL.md 约定（未实现自动加载） |
-| 记忆系统 | ✅ MEMORY.md + 向量检索 | ✅ 保留 | 简化为文件存储 |
+| 记忆系统 | ✅ MEMORY.md + 向量检索 | ✅ 保留 | 文件存储 + 持久化 |
 | 配置系统 | ✅ 多层配置 + UI | ✅ 简化 | 单 JSON 文件 |
 | 工具数量 | ✅ 50+ 工具 | ✅ 简化 | 核心 9 工具 |
-| 代码行数 | ~100k TS | ~400 TS | 精简 99.5% |
+| 代码行数 | ~100k TS | ~870 TS | 精简 99.1% |
 | 语言 | TypeScript | TypeScript | 100% TS |
+| 错误处理 | ✅ 完善 | ✅ 基础 | 重试 + 超时 |
+| Token 管理 | ✅ 完善 | ✅ 基础 | 估算 + 裁剪 |
 
 ## 核心工具（已实现 9 个）
 

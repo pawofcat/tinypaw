@@ -8,6 +8,9 @@ import { readFile, writeFile, appendFile, readdir } from 'node:fs/promises';
 import { exec as execCb } from 'node:child_process';
 import { promisify } from 'node:util';
 import fetch from 'node-fetch';
+import { SessionStore, getDefaultStore } from './session-store.js';
+import { withRetry, withTimeout, isNetworkError, isRateLimitError, formatError, sleep } from './retry.js';
+import { estimateConversationTokens, trimConversation, TokenCounter, getDefaultCounter } from './token-manager.js';
 
 const exec = promisify(execCb);
 
@@ -30,6 +33,8 @@ export interface Config {
   llm: LLMConfig;
   memory: MemoryConfig;
   system: string;
+  tokenLimit?: number;  // 最大 token 数（默认 128000）
+  retryAttempts?: number;  // 重试次数（默认 3）
 }
 
 export interface ToolParameter {
@@ -112,8 +117,14 @@ let config: Config = {
     path: './memory'
   },
   system: `你是一个 helpful 的 AI 助手。使用提供的工具来完成任务。
-思考过程要简洁，直接给出答案和行动。`
+思考过程要简洁，直接给出答案和行动。`,
+  tokenLimit: 128000,
+  retryAttempts: 3
 };
+
+// 全局会话存储和 token 计数器
+let sessionStore: SessionStore | null = null;
+let tokenCounter: TokenCounter | null = null;
 
 export async function loadConfig(path = './config.json'): Promise<Config> {
   try {
@@ -127,6 +138,37 @@ export async function loadConfig(path = './config.json'): Promise<Config> {
 
 export function getConfig(): Config {
   return config;
+}
+
+/**
+ * 初始化会话存储
+ */
+export async function initializeSessionStore(storagePath?: string): Promise<SessionStore> {
+  if (!sessionStore) {
+    sessionStore = new SessionStore(storagePath);
+    await sessionStore.initialize();
+  }
+  return sessionStore;
+}
+
+/**
+ * 获取会话存储
+ */
+export function getSessionStore(): SessionStore {
+  if (!sessionStore) {
+    sessionStore = getDefaultStore();
+  }
+  return sessionStore;
+}
+
+/**
+ * 获取 token 计数器
+ */
+export function getTokenCounter(): TokenCounter {
+  if (!tokenCounter) {
+    tokenCounter = getDefaultCounter();
+  }
+  return tokenCounter;
 }
 
 // ============================================================================
@@ -291,7 +333,17 @@ export function getTools(): Record<string, Tool> {
 // ============================================================================
 
 export async function callLLM(messages: Message[], tools: Record<string, Tool>): Promise<LLMResponse> {
-  const { llm } = config;
+  const { llm, tokenLimit = 128000, retryAttempts = 3 } = config;
+  
+  // Token 管理：裁剪过长的对话
+  const trimmedMessages = trimConversation(messages, {
+    maxTokens: tokenLimit,
+    reserveTokens: 4000,  // 预留给 response
+    minMessages: 5
+  });
+  
+  const tokenUsage = estimateConversationTokens(trimmedMessages);
+  console.log(`[Token] 使用 ${tokenUsage} / ${tokenLimit} tokens`);
   
   const toolDefinitions: ToolDefinition[] = Object.entries(tools).map(([name, tool]) => ({
     type: 'function',
@@ -310,37 +362,80 @@ export async function callLLM(messages: Message[], tools: Record<string, Tool>):
 
   const payload = {
     model: llm.model,
-    messages,
+    messages: trimmedMessages,
     tools: toolDefinitions,
     tool_choice: 'auto' as const
   };
 
-  const res = await fetch(`${llm.baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${llm.apiKey}`
+  // 带重试的 API 调用
+  const response = await withRetry(
+    async () => {
+      const res = await withTimeout(
+        () => fetch(`${llm.baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${llm.apiKey}`
+          },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(60000)  // 60 秒超时
+        }),
+        60000,
+        'LLM API 请求超时'
+      );
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        const error = new Error(`LLM API error: ${res.status} ${errorText}`);
+        
+        // 检查是否是限流错误
+        if (res.status === 429 || isRateLimitError(errorText)) {
+          console.warn('[LLM] 触发限流，等待后重试...');
+          await sleep(5000);  // 限流时等待 5 秒
+        }
+        
+        throw error;
+      }
+
+      const data = await res.json() as any;
+      const message = data.choices[0].message as LLMResponse;
+      
+      // 记录 token 使用
+      const usage = data.usage;
+      if (usage) {
+        getTokenCounter().recordUsage(usage.prompt_tokens || 0, usage.completion_tokens || 0);
+      }
+      
+      return message;
     },
-    body: JSON.stringify(payload)
-  });
+    {
+      maxRetries: retryAttempts,
+      initialDelay: 1000,
+      maxDelay: 30000,
+      factor: 2,
+      onRetry: (error, attempt) => {
+        if (isNetworkError(error)) {
+          console.log(`[LLM] 网络错误，第 ${attempt} 次重试...`);
+        }
+      }
+    }
+  );
 
-  if (!res.ok) {
-    const error = await res.text();
-    throw new Error(`LLM API error: ${res.status} ${error}`);
-  }
-
-  const data = await res.json() as any;
-  return data.choices[0].message as LLMResponse;
+  return response;
 }
 
 // ============================================================================
 // Agent 主循环
 // ============================================================================
 
-export async function agentLoop(userMessage: string, conversationHistory: Message[] = []): Promise<string> {
+export async function agentLoop(
+  userMessage: string,
+  sessionKey: string = 'default'
+): Promise<string> {
+  const store = getSessionStore();
   const messages: Message[] = [
     { role: 'system', content: config.system },
-    ...conversationHistory,
+    ...store.getSession(sessionKey),
     { role: 'user', content: userMessage }
   ];
 
@@ -350,78 +445,98 @@ export async function agentLoop(userMessage: string, conversationHistory: Messag
   while (iteration < maxIterations) {
     iteration++;
     
-    const response = await callLLM(messages, tools);
-    
-    if (response.tool_calls && response.tool_calls.length > 0) {
-      const toolResults: Message[] = [];
-      for (const toolCall of response.tool_calls) {
-        const { name, arguments: argsStr } = toolCall.function;
-        const args = JSON.parse(argsStr || '{}');
-        
-        console.log(`🔧 使用工具：${name}`, args);
-        
-        const tool = tools[name];
-        if (!tool) {
-          toolResults.push({
-            role: 'tool',
-            tool_call_id: toolCall.id,
-            content: `Error: Unknown tool "${name}"`
-          });
-          continue;
+    try {
+      const response = await callLLM(messages, tools);
+      
+      if (response.tool_calls && response.tool_calls.length > 0) {
+        const toolResults: Message[] = [];
+        for (const toolCall of response.tool_calls) {
+          const { name, arguments: argsStr } = toolCall.function;
+          const args = JSON.parse(argsStr || '{}');
+          
+          console.log(`🔧 使用工具：${name}`, args);
+          
+          const tool = tools[name];
+          if (!tool) {
+            toolResults.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: `Error: Unknown tool "${name}"`
+            });
+            continue;
+          }
+
+          try {
+            const result = await withTimeout(
+              () => tool.execute(args),
+              30000,  // 工具执行 30 秒超时
+              `工具 ${name} 执行超时`
+            );
+            toolResults.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: JSON.stringify(result, null, 2).slice(0, 10000)  // 限制结果长度
+            });
+          } catch (e) {
+            toolResults.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: `Error: ${formatError(e)}`
+            });
+          }
         }
 
-        try {
-          const result = await tool.execute(args);
-          toolResults.push({
-            role: 'tool',
-            tool_call_id: toolCall.id,
-            content: JSON.stringify(result, null, 2)
-          });
-        } catch (e) {
-          toolResults.push({
-            role: 'tool',
-            tool_call_id: toolCall.id,
-            content: `Error: ${(e as Error).message}`
-          });
-        }
+        messages.push(response as Message);
+        messages.push(...toolResults);
+        continue;
       }
 
-      messages.push(response as Message);
-      messages.push(...toolResults);
-      continue;
+      const reply = response.content || '无回复';
+      
+      // 保存会话
+      store.addToSession(sessionKey, 'user', userMessage);
+      store.addToSession(sessionKey, 'assistant', reply);
+      await store.saveSession(sessionKey);
+      
+      return reply;
+    } catch (e) {
+      const errorMsg = formatError(e);
+      console.error('[Agent] 错误:', errorMsg);
+      
+      // 保存错误到会话
+      store.addToSession(sessionKey, 'user', userMessage);
+      store.addToSession(sessionKey, 'assistant', `❌ 错误：${errorMsg}`);
+      await store.saveSession(sessionKey);
+      
+      return `❌ 处理请求时出错：${errorMsg}`;
     }
-
-    return response.content || '无回复';
   }
 
   return '达到最大迭代次数，未能完成任务。';
 }
 
 // ============================================================================
-// 会话管理
+// 会话管理（已迁移到 session-store.ts）
 // ============================================================================
-
-const sessions = new Map<string, Message[]>();
+// 使用 SessionStore 替代简单的 Map 存储
+// 导出兼容函数以便向后兼容
 
 export function getSession(sessionKey: string): Message[] {
-  if (!sessions.has(sessionKey)) {
-    sessions.set(sessionKey, []);
-  }
-  return sessions.get(sessionKey)!;
+  return getSessionStore().getSession(sessionKey);
 }
 
 export function addToSession(sessionKey: string, role: string, content: string): void {
-  const session = getSession(sessionKey);
-  session.push({ role: role as Message['role'], content });
-  if (session.length > 40) {
-    session.splice(0, session.length - 40);
-  }
+  getSessionStore().addToSession(sessionKey, role, content);
 }
 
-export function clearSession(sessionKey: string): void {
-  sessions.delete(sessionKey);
+export async function saveSession(sessionKey: string): Promise<boolean> {
+  return getSessionStore().saveSession(sessionKey);
 }
 
-export function listSessions(): string[] {
-  return Array.from(sessions.keys());
+export function clearSession(sessionKey: string): boolean {
+  return getSessionStore().clearSession(sessionKey);
+}
+
+export function listSessions(): import('./session-store.js').SessionMeta[] {
+  return getSessionStore().listSessions();
 }
