@@ -1,0 +1,12 @@
+{
+  "llm": {
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "apiKey": "YOUR_API_KEY_HERE",
+    "baseUrl": "https://api.openai.com/v1"
+  },
+  "memory": {
+    "path": "./memory"
+  },
+  "system": "你是一个 helpful 的 AI 助手。使用提供的工具来完成任务。思考过程要简洁，直接给出答案和行动。"
+}

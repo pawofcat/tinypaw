@@ -1,0 +1,30 @@
+{
+  "name": "tinypaw",
+  "version": "0.1.0",
+  "description": "极简 Agent 框架 - Minimal Agent Framework",
+  "type": "module",
+  "main": "src/agent.js",
+  "bin": {
+    "tinypaw": "./src/cli.js"
+  },
+  "scripts": {
+    "start": "node src/cli.js",
+    "dev": "node --watch src/cli.js",
+    "test": "node --test test/*.test.js"
+  },
+  "keywords": [
+    "agent",
+    "llm",
+    "ai",
+    "openclaw",
+    "minimal"
+  ],
+  "author": "pawofcat",
+  "license": "MIT",
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
