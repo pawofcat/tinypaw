@@ -16,13 +16,15 @@ TinyPaw 是 OpenClaw 的轻量级版本，专注于核心功能：
 ```
 tinypaw/
 ├── src/
-│   ├── agent.js          # Agent 核心（LLM 调用 + tool calling）
-│   └── cli.js            # 命令行接口
+│   ├── agent.ts          # Agent 核心（LLM 调用 + tool calling）
+│   └── cli.ts            # 命令行接口
+├── dist/                 # 编译输出（自动生成）
 ├── skills/               # 技能插件目录
 │   └── memory/
 │       └── SKILL.md
 ├── memory/               # 记忆存储（运行时创建）
 ├── config.json           # 配置文件
+├── tsconfig.json         # TypeScript 配置
 └── package.json
 ```
 
@@ -38,7 +40,8 @@ tinypaw/
 | 记忆系统 | ✅ MEMORY.md + 向量检索 | ✅ 保留 | 简化为文件存储 |
 | 配置系统 | ✅ 多层配置 + UI | ✅ 简化 | 单 JSON 文件 |
 | 工具数量 | ✅ 50+ 工具 | ✅ 简化 | 核心 9 工具 |
-| 代码行数 | ~100k | ~500 | 精简 99.5% |
+| 代码行数 | ~100k TS | ~400 TS | 精简 99.5% |
+| 语言 | TypeScript | TypeScript | 100% TS |
 
 ## 核心工具（已实现 9 个）
 
@@ -60,14 +63,17 @@ tinypaw/
 # 安装
 git clone https://github.com/pawofcat/tinypaw
 cd tinypaw
-pnpm install
+npm install
 
 # 配置
 cp config.example.json config.json
 # 编辑 config.json 填入 LLM API key
 
+# 构建
+npm run build
+
 # 运行
-pnpm start
+npm start
 ```
 
 ## 技能开发

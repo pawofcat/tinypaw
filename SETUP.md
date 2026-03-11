@@ -22,12 +22,18 @@ git push
 
 ```bash
 cd tinypaw
-pnpm install
-# 或
 npm install
 ```
 
-## 3. 配置 LLM
+## 3. 构建 TypeScript
+
+```bash
+npm run build
+```
+
+编译输出到 `dist/` 目录。
+
+## 4. 配置 LLM
 
 ```bash
 cp config.example.json config.json
@@ -51,12 +57,17 @@ cp config.example.json config.json
 - Azure OpenAI
 - 任何 OpenAI 兼容 API（Claude Code API、本地 LLM 等）
 
-## 4. 运行
+## 5. 运行
 
 ```bash
-pnpm start
+npm start
 # 或
-node src/cli.js
+node dist/cli.js
+```
+
+**开发模式**（自动重新编译）:
+```bash
+npm run dev
 ```
 
 ## 5. 使用示例
@@ -81,7 +92,17 @@ node src/cli.js
 💬 好的，已记录到今日记忆中。
 ```
 
-## 6. 可用工具（9 个）
+## 6. 开发命令
+
+```bash
+npm run build      # 编译 TypeScript
+npm run start      # 运行
+npm run dev        # 开发模式（自动重新编译）
+npm run typecheck  # 类型检查（不生成文件）
+npm run clean      # 删除 dist 目录
+```
+
+## 7. 可用工具（9 个）
 
 | 工具 | 功能 |
 |------|------|
@@ -106,32 +127,39 @@ cat > skills/my-skill/SKILL.md
 
 参考 `skills/memory/SKILL.md` 示例。
 
-## 8. 项目结构
+## 9. 项目结构
 
 ```
 tinypaw/
 ├── src/
-│   ├── agent.js        # Agent 核心（LLM + tool calling）
-│   └── cli.js          # CLI 接口
+│   ├── agent.ts        # Agent 核心（LLM + tool calling）
+│   └── cli.ts          # CLI 接口
+├── dist/               # 编译输出（自动生成）
+│   ├── agent.js
+│   ├── agent.d.ts
+│   ├── cli.js
+│   └── cli.d.ts
 ├── skills/
 │   ├── README.md       # 技能系统说明
 │   └── memory/
 │       └── SKILL.md    # 记忆技能定义
 ├── memory/             # 记忆存储（运行时创建）
 ├── config.example.json # 配置模板
+├── tsconfig.json       # TypeScript 配置
 ├── package.json
 ├── README.md           # 项目介绍
 ├── ARCHITECTURE.md     # 架构设计
 ├── SETUP.md            # 快速开始指南
+├── TODO.md             # 功能清单与计划
 └── push.sh             # 推送脚本
 ```
 
 **代码统计**:
-- `agent.js`: ~300 行
-- `cli.js`: ~80 行
-- 总计：~400 行（核心代码）
+- `agent.ts`: ~330 行
+- `cli.ts`: ~80 行
+- 总计：~410 行 TypeScript
 
-## 9. 故障排查
+## 10. 故障排查
 
 ### SSH 推送失败
 
@@ -160,7 +188,7 @@ ssh-add ~/.ssh/id_ed25519
 2. 权限是否足够
 3. 命令是否合法
 
-## 10. 下一步
+## 11. 下一步
 
 **优先级高**:
 - [ ] 修复 web_search（DuckDuckGo HTML 解析不稳定）

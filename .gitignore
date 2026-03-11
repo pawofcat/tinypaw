@@ -3,3 +3,4 @@ config.json
 memory/
 *.log
 .DS_Store
+dist/

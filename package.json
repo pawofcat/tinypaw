@@ -3,26 +3,35 @@
   "version": "0.1.0",
   "description": "极简 Agent 框架 - Minimal Agent Framework",
   "type": "module",
-  "main": "src/agent.js",
+  "main": "./dist/agent.js",
+  "types": "./dist/agent.d.ts",
   "bin": {
-    "tinypaw": "./src/cli.js"
+    "tinypaw": "./dist/cli.js"
   },
   "scripts": {
-    "start": "node src/cli.js",
-    "dev": "node --watch src/cli.js",
-    "test": "node --test test/*.test.js"
+    "build": "tsc",
+    "start": "node dist/cli.js",
+    "dev": "tsc --watch & node --watch dist/cli.js",
+    "clean": "rm -rf dist",
+    "test": "node --test test/*.test.js",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [
     "agent",
     "llm",
     "ai",
     "openclaw",
-    "minimal"
+    "minimal",
+    "typescript"
   ],
   "author": "pawofcat",
   "license": "MIT",
   "dependencies": {
     "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3"
   },
   "engines": {
     "node": ">=18"

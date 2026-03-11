@@ -4,7 +4,7 @@
  * 极简 Agent 核心 - LLM 驱动的工具调用 agent
  */
 
-import { readFile, writeFile, appendFile } from 'node:fs/promises';
+import { readFile, writeFile, appendFile, readdir } from 'node:fs/promises';
 import { exec as execCb } from 'node:child_process';
 import { promisify } from 'node:util';
 import fetch from 'node-fetch';
@@ -12,10 +12,96 @@ import fetch from 'node-fetch';
 const exec = promisify(execCb);
 
 // ============================================================================
+// 类型定义
+// ============================================================================
+
+export interface LLMConfig {
+  provider: string;
+  model: string;
+  apiKey: string;
+  baseUrl: string;
+}
+
+export interface MemoryConfig {
+  path: string;
+}
+
+export interface Config {
+  llm: LLMConfig;
+  memory: MemoryConfig;
+  system: string;
+}
+
+export interface ToolParameter {
+  [key: string]: string;
+}
+
+export interface Tool {
+  description: string;
+  parameters: ToolParameter;
+  execute: (args: any) => Promise<ToolResult>;
+}
+
+export interface ToolResult {
+  success: boolean;
+  content?: string;
+  path?: string;
+  stdout?: string;
+  stderr?: string;
+  results?: Array<{ title: string; url: string } | { file: string; snippet: string }>;
+  error?: string;
+  file?: string;
+  snippet?: string;
+}
+
+export interface Message {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string;
+  tool_call_id?: string;
+}
+
+export interface ToolCall {
+  id: string;
+  type: 'function';
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
+export interface LLMResponse {
+  content: string | null;
+  tool_calls?: ToolCall[];
+}
+
+export interface ToolDefinition {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: {
+      type: 'object';
+      properties: Record<string, { type: string }>;
+      required: string[];
+    };
+  };
+}
+
+export interface MemorySearchResult {
+  file: string;
+  snippet: string;
+}
+
+export interface WebSearchResult {
+  title: string;
+  url: string;
+}
+
+// ============================================================================
 // 配置
 // ============================================================================
 
-let config = {
+let config: Config = {
   llm: {
     provider: 'openai',
     model: 'gpt-4o-mini',
@@ -29,7 +115,7 @@ let config = {
 思考过程要简洁，直接给出答案和行动。`
 };
 
-export async function loadConfig(path = './config.json') {
+export async function loadConfig(path = './config.json'): Promise<Config> {
   try {
     const content = await readFile(path, 'utf-8');
     config = { ...config, ...JSON.parse(content) };
@@ -39,20 +125,24 @@ export async function loadConfig(path = './config.json') {
   return config;
 }
 
+export function getConfig(): Config {
+  return config;
+}
+
 // ============================================================================
 // 工具系统
 // ============================================================================
 
-const tools = {
+const tools: Record<string, Tool> = {
   read: {
     description: '读取文件内容',
     parameters: { path: 'string' },
-    execute: async ({ path }) => {
+    execute: async ({ path }: { path: string }): Promise<ToolResult> => {
       try {
         const content = await readFile(path, 'utf-8');
         return { success: true, content: content.slice(0, 50000) };
       } catch (e) {
-        return { success: false, error: e.message };
+        return { success: false, error: (e as Error).message };
       }
     }
   },
@@ -60,12 +150,12 @@ const tools = {
   write: {
     description: '写入文件内容',
     parameters: { path: 'string', content: 'string' },
-    execute: async ({ path, content }) => {
+    execute: async ({ path, content }: { path: string; content: string }): Promise<ToolResult> => {
       try {
         await writeFile(path, content, 'utf-8');
         return { success: true, path };
       } catch (e) {
-        return { success: false, error: e.message };
+        return { success: false, error: (e as Error).message };
       }
     }
   },
@@ -73,14 +163,14 @@ const tools = {
   edit: {
     description: '编辑文件（替换文本）',
     parameters: { path: 'string', oldText: 'string', newText: 'string' },
-    execute: async ({ path, oldText, newText }) => {
+    execute: async ({ path, oldText, newText }: { path: string; oldText: string; newText: string }): Promise<ToolResult> => {
       try {
         const content = await readFile(path, 'utf-8');
         const updated = content.replace(oldText, newText);
         await writeFile(path, updated, 'utf-8');
         return { success: true };
       } catch (e) {
-        return { success: false, error: e.message };
+        return { success: false, error: (e as Error).message };
       }
     }
   },
@@ -88,12 +178,13 @@ const tools = {
   exec: {
     description: '执行 shell 命令',
     parameters: { command: 'string' },
-    execute: async ({ command }) => {
+    execute: async ({ command }: { command: string }): Promise<ToolResult> => {
       try {
         const { stdout, stderr } = await exec(command, { timeout: 60000 });
         return { success: true, stdout, stderr };
       } catch (e) {
-        return { success: false, error: e.message, stdout: e.stdout, stderr: e.stderr };
+        const error = e as Error & { stdout?: string; stderr?: string };
+        return { success: false, error: error.message, stdout: error.stdout, stderr: error.stderr };
       }
     }
   },
@@ -101,14 +192,12 @@ const tools = {
   web_search: {
     description: '网络搜索',
     parameters: { query: 'string' },
-    execute: async ({ query }) => {
-      // 简化版：使用 DuckDuckGo HTML 搜索
+    execute: async ({ query }: { query: string }): Promise<ToolResult> => {
       try {
         const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
         const res = await fetch(url);
         const html = await res.text();
-        // 简单提取标题和链接
-        const results = [];
+        const results: WebSearchResult[] = [];
         const titleRegex = /<a class="result__a" href="([^"]+)">([^<]+)<\/a>/g;
         let match;
         while ((match = titleRegex.exec(html)) !== null) {
@@ -116,7 +205,7 @@ const tools = {
         }
         return { success: true, results: results.slice(0, 10) };
       } catch (e) {
-        return { success: false, error: e.message };
+        return { success: false, error: (e as Error).message };
       }
     }
   },
@@ -124,11 +213,10 @@ const tools = {
   web_fetch: {
     description: '抓取网页内容',
     parameters: { url: 'string' },
-    execute: async ({ url }) => {
+    execute: async ({ url }: { url: string }): Promise<ToolResult> => {
       try {
         const res = await fetch(url);
         const html = await res.text();
-        // 简单提取文本
         const text = html
           .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
           .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
@@ -137,7 +225,7 @@ const tools = {
           .trim();
         return { success: true, content: text.slice(0, 50000) };
       } catch (e) {
-        return { success: false, error: e.message };
+        return { success: false, error: (e as Error).message };
       }
     }
   },
@@ -145,12 +233,11 @@ const tools = {
   memory_search: {
     description: '搜索记忆',
     parameters: { query: 'string' },
-    execute: async ({ query }) => {
+    execute: async ({ query }: { query: string }): Promise<ToolResult> => {
       try {
         const memoryPath = config.memory.path;
-        const { readdir } = await import('node:fs/promises');
         const files = await readdir(memoryPath).catch(() => []);
-        const results = [];
+        const results: MemorySearchResult[] = [];
         for (const file of files) {
           if (file.endsWith('.md')) {
             const content = await readFile(`${memoryPath}/${file}`, 'utf-8');
@@ -161,7 +248,7 @@ const tools = {
         }
         return { success: true, results };
       } catch (e) {
-        return { success: false, error: e.message };
+        return { success: false, error: (e as Error).message };
       }
     }
   },
@@ -169,13 +256,13 @@ const tools = {
   memory_get: {
     description: '读取记忆文件',
     parameters: { path: 'string' },
-    execute: async ({ path }) => {
+    execute: async ({ path }: { path: string }): Promise<ToolResult> => {
       try {
         const fullPath = path.startsWith('/') ? path : `${config.memory.path}/${path}`;
         const content = await readFile(fullPath, 'utf-8');
         return { success: true, content };
       } catch (e) {
-        return { success: false, error: e.message };
+        return { success: false, error: (e as Error).message };
       }
     }
   },
@@ -183,19 +270,19 @@ const tools = {
   memory_append: {
     description: '追加记忆',
     parameters: { path: 'string', content: 'string' },
-    execute: async ({ path, content }) => {
+    execute: async ({ path, content }: { path: string; content: string }): Promise<ToolResult> => {
       try {
         const fullPath = path.startsWith('/') ? path : `${config.memory.path}/${path}`;
         await appendFile(fullPath, content + '\n', 'utf-8');
         return { success: true };
       } catch (e) {
-        return { success: false, error: e.message };
+        return { success: false, error: (e as Error).message };
       }
     }
   }
 };
 
-export function getTools() {
+export function getTools(): Record<string, Tool> {
   return tools;
 }
 
@@ -203,11 +290,10 @@ export function getTools() {
 // LLM 调用
 // ============================================================================
 
-export async function callLLM(messages, tools) {
+export async function callLLM(messages: Message[], tools: Record<string, Tool>): Promise<LLMResponse> {
   const { llm } = config;
   
-  // 构建 tool definitions
-  const toolDefinitions = Object.entries(tools).map(([name, tool]) => ({
+  const toolDefinitions: ToolDefinition[] = Object.entries(tools).map(([name, tool]) => ({
     type: 'function',
     function: {
       name,
@@ -226,7 +312,7 @@ export async function callLLM(messages, tools) {
     model: llm.model,
     messages,
     tools: toolDefinitions,
-    tool_choice: 'auto'
+    tool_choice: 'auto' as const
   };
 
   const res = await fetch(`${llm.baseUrl}/chat/completions`, {
@@ -243,34 +329,31 @@ export async function callLLM(messages, tools) {
     throw new Error(`LLM API error: ${res.status} ${error}`);
   }
 
-  const data = await res.json();
-  return data.choices[0].message;
+  const data = await res.json() as any;
+  return data.choices[0].message as LLMResponse;
 }
 
 // ============================================================================
 // Agent 主循环
 // ============================================================================
 
-export async function agentLoop(userMessage, conversationHistory = []) {
-  const messages = [
+export async function agentLoop(userMessage: string, conversationHistory: Message[] = []): Promise<string> {
+  const messages: Message[] = [
     { role: 'system', content: config.system },
     ...conversationHistory,
     { role: 'user', content: userMessage }
   ];
 
-  let maxIterations = 10;
+  const maxIterations = 10;
   let iteration = 0;
 
   while (iteration < maxIterations) {
     iteration++;
     
-    // 调用 LLM
     const response = await callLLM(messages, tools);
     
-    // 检查是否有工具调用
     if (response.tool_calls && response.tool_calls.length > 0) {
-      // 执行工具调用
-      const toolResults = [];
+      const toolResults: Message[] = [];
       for (const toolCall of response.tool_calls) {
         const { name, arguments: argsStr } = toolCall.function;
         const args = JSON.parse(argsStr || '{}');
@@ -298,21 +381,17 @@ export async function agentLoop(userMessage, conversationHistory = []) {
           toolResults.push({
             role: 'tool',
             tool_call_id: toolCall.id,
-            content: `Error: ${e.message}`
+            content: `Error: ${(e as Error).message}`
           });
         }
       }
 
-      // 将工具结果添加回对话
-      messages.push(response);
+      messages.push(response as Message);
       messages.push(...toolResults);
-      
-      // 继续循环让 LLM 处理工具结果
       continue;
     }
 
-    // 没有工具调用，返回最终回复
-    return response.content;
+    return response.content || '无回复';
   }
 
   return '达到最大迭代次数，未能完成任务。';
@@ -322,20 +401,27 @@ export async function agentLoop(userMessage, conversationHistory = []) {
 // 会话管理
 // ============================================================================
 
-const sessions = new Map();
+const sessions = new Map<string, Message[]>();
 
-export function getSession(sessionKey) {
+export function getSession(sessionKey: string): Message[] {
   if (!sessions.has(sessionKey)) {
     sessions.set(sessionKey, []);
   }
-  return sessions.get(sessionKey);
+  return sessions.get(sessionKey)!;
 }
 
-export function addToSession(sessionKey, role, content) {
+export function addToSession(sessionKey: string, role: string, content: string): void {
   const session = getSession(sessionKey);
-  session.push({ role, content });
-  // 保留最近 20 条消息
+  session.push({ role: role as Message['role'], content });
   if (session.length > 40) {
     session.splice(0, session.length - 40);
   }
+}
+
+export function clearSession(sessionKey: string): void {
+  sessions.delete(sessionKey);
+}
+
+export function listSessions(): string[] {
+  return Array.from(sessions.keys());
 }

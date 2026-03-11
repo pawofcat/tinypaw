@@ -6,16 +6,13 @@
 
 import { loadConfig, agentLoop, addToSession, getSession } from './agent.js';
 import { createInterface } from 'node:readline';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 
-async function main() {
-  console.log('🦎 TinyPaw v0.1.0 - 极简 Agent 框架');
+async function main(): Promise<void> {
+  console.log('🦎 TinyPaw v0.1.0 - 极简 Agent 框架 (TypeScript)');
   console.log('输入 "exit" 或 Ctrl+C 退出\n');
 
-  // 加载配置
   await loadConfig();
-  
-  // 确保记忆目录存在
   await mkdir('./memory', { recursive: true }).catch(() => {});
 
   const rl = createInterface({
@@ -25,10 +22,8 @@ async function main() {
 
   const sessionKey = 'default';
   
-  // 加载历史记忆
   const today = new Date().toISOString().split('T')[0];
   try {
-    const { readFile } = await import('node:fs/promises');
     const memoryContent = await readFile(`./memory/${today}.md`, 'utf-8').catch(() => '');
     if (memoryContent) {
       addToSession(sessionKey, 'system', `今日记忆：${memoryContent.slice(0, 500)}`);
@@ -52,7 +47,6 @@ async function main() {
         return;
       }
 
-      // 添加到会话历史
       addToSession(sessionKey, 'user', trimmed);
 
       try {
@@ -63,12 +57,11 @@ async function main() {
         
         console.log('\n💬', response || '(无回复)');
         
-        // 添加回复到历史
         if (response) {
           addToSession(sessionKey, 'assistant', response);
         }
       } catch (e) {
-        console.error('❌ 错误:', e.message);
+        console.error('❌ 错误:', (e as Error).message);
         console.error('提示：请检查 config.json 中的 LLM API 配置');
       }
 
