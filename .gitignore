@@ -1,12 +1,12 @@
 .env
 .env.local
 node_modules/
-config.json
 *.log
 .DS_Store
 dist/
 
-# 记忆内容忽略，但保留目录结构
-memory/sessions/*.jsonl
-memory/sessions/index.json
-memory/daily/*.md
+# 运行时 workspace 内容忽略，但保留目录结构
+workspace/config.json
+workspace/memory/sessions/*.jsonl
+workspace/memory/sessions/index.json
+workspace/memory/daily/*.md
