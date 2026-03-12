@@ -109,9 +109,9 @@ export interface WebSearchResult {
 let config: Config = {
   llm: {
     provider: 'openai',
-    model: 'gpt-4o-mini',
+    model: 'qwen3.5-plus',
     apiKey: process.env.LLM_API_KEY || '',
-    baseUrl: process.env.LLM_BASE_URL || 'https://api.openai.com/v1'
+    baseUrl: process.env.LLM_BASE_URL || 'https://coding.dashscope.aliyuncs.com/v1'
   },
   memory: {
     path: './memory'
