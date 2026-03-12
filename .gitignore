@@ -2,7 +2,11 @@
 .env.local
 node_modules/
 config.json
-memory/
 *.log
 .DS_Store
 dist/
+
+# 记忆内容忽略，但保留目录结构
+memory/sessions/*.jsonl
+memory/sessions/index.json
+memory/daily/*.md
