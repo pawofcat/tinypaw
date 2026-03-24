@@ -8,7 +8,7 @@ import { readFile, writeFile, appendFile, readdir } from 'node:fs/promises';
 import { exec as execCb } from 'node:child_process';
 import { promisify } from 'node:util';
 import fetch from 'node-fetch';
-import { SessionStore, getDefaultStore } from './session-store.js';
+import { SessionManager, getDefaultManager } from './session-manager.js';
 import { withRetry, withTimeout, isNetworkError, isRateLimitError, formatError, sleep } from './retry.js';
 import { estimateConversationTokens, trimConversation, TokenCounter, getDefaultCounter } from './token-manager.js';
 
@@ -122,8 +122,8 @@ let config: Config = {
   retryAttempts: 3
 };
 
-// 全局会话存储和 token 计数器
-let sessionStore: SessionStore | null = null;
+// 全局会话管理器和 token 计数器
+let sessionManager: SessionManager | null = null;
 let tokenCounter: TokenCounter | null = null;
 
 export async function loadConfig(path = './config.json'): Promise<Config> {
@@ -141,24 +141,31 @@ export function getConfig(): Config {
 }
 
 /**
- * 初始化会话存储
+ * 设置会话管理器（由 CLI 初始化）
  */
-export async function initializeSessionStore(storagePath?: string): Promise<SessionStore> {
-  if (!sessionStore) {
-    sessionStore = new SessionStore(storagePath);
-    await sessionStore.initialize();
-  }
-  return sessionStore;
+export function setSessionManager(manager: SessionManager): void {
+  sessionManager = manager;
 }
 
 /**
- * 获取会话存储
+ * 初始化会话管理器
  */
-export function getSessionStore(): SessionStore {
-  if (!sessionStore) {
-    sessionStore = getDefaultStore();
+export async function initializeSessionStore(storagePath?: string): Promise<SessionManager> {
+  if (!sessionManager) {
+    sessionManager = new SessionManager(storagePath ? { storagePath } : undefined);
+    await sessionManager.initialize();
   }
-  return sessionStore;
+  return sessionManager;
+}
+
+/**
+ * 获取会话管理器
+ */
+export function getSessionManager(): SessionManager {
+  if (!sessionManager) {
+    sessionManager = getDefaultManager();
+  }
+  return sessionManager;
 }
 
 /**
@@ -430,12 +437,18 @@ export async function callLLM(messages: Message[], tools: Record<string, Tool>):
 
 export async function agentLoop(
   userMessage: string,
-  sessionKey: string = 'default'
+  sessionKey?: string
 ): Promise<string> {
-  const store = getSessionStore();
+  const manager = getSessionManager();
+  const currentSessionKey = sessionKey || manager.getCurrentSessionKey();
+  
+  // 获取当前会话消息（不包含 system）
+  const sessionMessages = manager.getSession(currentSessionKey);
+  
+  // 构建消息数组：system + 会话历史 + 用户消息
   const messages: Message[] = [
     { role: 'system', content: config.system },
-    ...store.getSession(sessionKey),
+    ...sessionMessages,
     { role: 'user', content: userMessage }
   ];
 
@@ -493,10 +506,10 @@ export async function agentLoop(
 
       const reply = response.content || '无回复';
       
-      // 保存会话
-      store.addToSession(sessionKey, 'user', userMessage);
-      store.addToSession(sessionKey, 'assistant', reply);
-      await store.saveSession(sessionKey);
+      // 保存会话到管理器
+      manager.addToSession('user', userMessage, currentSessionKey);
+      manager.addToSession('assistant', reply, currentSessionKey);
+      await manager.saveSession(currentSessionKey);
       
       return reply;
     } catch (e) {
@@ -504,9 +517,9 @@ export async function agentLoop(
       console.error('[Agent] 错误:', errorMsg);
       
       // 保存错误到会话
-      store.addToSession(sessionKey, 'user', userMessage);
-      store.addToSession(sessionKey, 'assistant', `❌ 错误：${errorMsg}`);
-      await store.saveSession(sessionKey);
+      manager.addToSession('user', userMessage, currentSessionKey);
+      manager.addToSession('assistant', `❌ 错误：${errorMsg}`, currentSessionKey);
+      await manager.saveSession(currentSessionKey);
       
       return `❌ 处理请求时出错：${errorMsg}`;
     }
@@ -516,27 +529,32 @@ export async function agentLoop(
 }
 
 // ============================================================================
-// 会话管理（已迁移到 session-store.ts）
+// 会话管理兼容函数（已迁移到 session-manager.ts）
 // ============================================================================
-// 使用 SessionStore 替代简单的 Map 存储
+// 使用 SessionManager 替代 SessionStore
 // 导出兼容函数以便向后兼容
 
-export function getSession(sessionKey: string): Message[] {
-  return getSessionStore().getSession(sessionKey);
+export function getSession(sessionKey?: string): Message[] {
+  const manager = getSessionManager();
+  return manager.getSession(sessionKey);
 }
 
-export function addToSession(sessionKey: string, role: string, content: string): void {
-  getSessionStore().addToSession(sessionKey, role, content);
+export function addToSession(role: string, content: string, sessionKey?: string): void {
+  const manager = getSessionManager();
+  manager.addToSession(role, content, sessionKey);
 }
 
-export async function saveSession(sessionKey: string): Promise<boolean> {
-  return getSessionStore().saveSession(sessionKey);
+export async function saveSession(sessionKey?: string): Promise<boolean> {
+  const manager = getSessionManager();
+  return manager.saveSession(sessionKey);
 }
 
-export function clearSession(sessionKey: string): boolean {
-  return getSessionStore().clearSession(sessionKey);
+export function clearSession(sessionKey?: string): boolean {
+  const manager = getSessionManager();
+  return manager.resetSession(sessionKey).success;
 }
 
-export function listSessions(): import('./session-store.js').SessionMeta[] {
-  return getSessionStore().listSessions();
+export function listSessions(): import('./session-manager.js').SessionMeta[] {
+  const manager = getSessionManager();
+  return manager.listFiles();
 }
