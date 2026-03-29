@@ -4,25 +4,26 @@
  * 命令行交互接口 - 支持会话管理 + 技能命令
  */
 
-import { loadConfig, agentLoop, getTokenCounter, setSessionManager, setSkillLoader, getConfig } from './agent.js';
+import { loadConfig, agentLoop, getTokenCounter, setSessionManager, setSkillLoader, getConfig, startHeartbeat, stopHeartbeat, setAgentBusy } from './agent.js';
 import { getDefaultManager } from './session-manager.js';
 import { initializeSkills } from './skill-loader.js';
 import { createInterface } from 'node:readline';
 import { mkdir } from 'node:fs/promises';
 
 async function main(): Promise<void> {
-  console.log('🦎 TinyPaw v0.4.0 - 极简 Agent 框架 (技能系统)');
+  console.log('🦎 TinyPaw - 极简 Agent');
   console.log('输入 "exit" 退出，"/help" 查看命令，"/skills" 查看技能\n');
 
   await loadConfig();
   const config = getConfig();
   
-  // 根据配置创建 memory 目录
-  const memoryPath = config.memory?.path || './workspace/memory';
-  await mkdir(memoryPath, { recursive: true }).catch(() => {});
+  // 根据配置创建 workspace 目录
+  const workspacePath = config.workspace?.path || './workspace';
+  await mkdir(workspacePath, { recursive: true }).catch(() => {});
+  await mkdir(`${workspacePath}/memory`, { recursive: true }).catch(() => {});
   
   // 初始化会话管理器（传入配置）
-  const sessionsPath = `${memoryPath}/sessions`;
+  const sessionsPath = `${workspacePath}/memory/sessions`;
   const sessionManager = getDefaultManager({
     storagePath: sessionsPath,
     maxTokens: config.tokenLimit || 128000
@@ -33,6 +34,9 @@ async function main(): Promise<void> {
   // 初始化技能加载器
   const skillLoader = await initializeSkills('./skills');
   setSkillLoader(skillLoader);
+  
+  // 启动心跳
+  startHeartbeat();
 
   const rl = createInterface({
     input: process.stdin,
@@ -143,6 +147,7 @@ async function main(): Promise<void> {
 
       if (trimmed.toLowerCase() === 'exit' || trimmed.toLowerCase() === 'quit') {
         console.log('👋 再见！');
+        stopHeartbeat();
         await sessionManager.saveAllSessions();
         
         const finalStats = getTokenCounter().getStats();
@@ -165,12 +170,14 @@ async function main(): Promise<void> {
         // 如果是技能调用，执行技能内容
         if (cmdResult.skillContent) {
           console.log('\n🤔 执行技能...\n');
+          setAgentBusy(true);
           try {
             const response = await agentLoop(cmdResult.skillContent);
             console.log('\n💬', response);
           } catch (e) {
             console.error('❌ 技能执行错误:', (e as Error).message);
           }
+          setAgentBusy(false);
         }
         
         console.log();
@@ -179,6 +186,7 @@ async function main(): Promise<void> {
       }
 
       // 普通对话
+      setAgentBusy(true);
       try {
         console.log('\n🤔 思考中...\n');
         const response = await agentLoop(trimmed);
@@ -187,6 +195,7 @@ async function main(): Promise<void> {
         console.error('❌ 错误:', (e as Error).message);
         console.error('提示：请检查 config.json 中的 LLM API 配置');
       }
+      setAgentBusy(false);
 
       console.log();
       prompt();

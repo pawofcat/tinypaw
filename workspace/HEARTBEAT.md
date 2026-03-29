@@ -1,11 +1,21 @@
-# HEARTBEAT.md
+# Heartbeat Tasks
 
-# 心跳任务清单
-# 格式：每行一个任务，支持简单描述
+This file is checked every heartbeat interval.
+Add tasks below that you want the agent to work on periodically.
 
-# 示例：
-# - 检查日历（未来 24 小时）
-# - 检查未读邮件
-# - 查看天气（如需外出）
+If this file has no tasks, the agent will skip the heartbeat.
 
-# 当前为空，按需添加
+## Recurring
+
+<!-- Tasks that run on every heartbeat, do NOT move to Completed -->
+
+
+## One-time
+
+<!-- Tasks that run once, then move to Completed -->
+
+
+## Completed
+
+<!-- Completed one-time tasks -->
+

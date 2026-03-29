@@ -7,8 +7,4 @@ dist/
 
 config.json
 
-# 运行时 workspace 内容忽略，但保留目录结构
-workspace/config.json
-workspace/memory/sessions/*.jsonl
-workspace/memory/sessions/index.json
-workspace/memory/daily/*.md
+workspace/

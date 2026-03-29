@@ -12,23 +12,23 @@ Memory path is configured in `config.json`:
 
 ```json
 {
-  "memory": {
-    "path": "./workspace/memory"
+  "workspace": {
+    "path": "./workspace"
   }
 }
 ```
 
-Default: `./workspace/memory`
+Memory files are stored in `{workspace.path}/memory/`.
 
 ## Structure
 
-- `{memory.path}/MEMORY.md` — Long-term facts (preferences, project context, relationships)
-- `{memory.path}/HISTORY.md` — Append-only event log. Search with grep.
+- `{workspace.path}/memory/MEMORY.md` — Long-term facts (preferences, project context, relationships)
+- `{workspace.path}/memory/HISTORY.md` — Append-only event log. Search with grep.
 
 ## Search Past Events
 
 ```bash
-grep -i "keyword" memory/HISTORY.md
+grep -i "keyword" workspace/memory/HISTORY.md
 ```
 
 ## When to Update MEMORY.md
