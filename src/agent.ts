@@ -115,7 +115,7 @@ let config: Config = {
     baseUrl: process.env.LLM_BASE_URL || 'https://coding.dashscope.aliyuncs.com/v1'
   },
   memory: {
-    path: './memory'
+    path: './workspace/memory'
   },
   system: `你是一个 helpful 的 AI 助手。使用提供的工具来完成任务。
 思考过程要简洁，直接给出答案和行动。`,
@@ -165,7 +165,12 @@ export async function initializeSessionStore(storagePath?: string): Promise<Sess
  */
 export function getSessionManager(): SessionManager {
   if (!sessionManager) {
-    sessionManager = getDefaultManager();
+    // 使用配置中的 memory path
+    const memoryPath = config.memory?.path || './workspace/memory';
+    sessionManager = getDefaultManager({
+      storagePath: `${memoryPath}/sessions`,
+      maxTokens: config.tokenLimit || 128000
+    });
   }
   return sessionManager;
 }
@@ -377,6 +382,8 @@ export async function callLLM(messages: Message[], tools: Record<string, Tool>):
     reserveTokens: 4000,  // 预留给 response
     minMessages: 5
   });
+
+  // console.debug("trimmedMessages===>", trimmedMessages);
   
   const tokenUsage = estimateConversationTokens(trimmedMessages);
   console.log(`[Token] 使用 ${tokenUsage} / ${tokenLimit} tokens`);
@@ -464,6 +471,42 @@ export async function callLLM(messages: Message[], tools: Record<string, Tool>):
 // Agent 主循环
 // ============================================================================
 
+/**
+ * 构建分层的 System Prompt（渐进式披露）
+ */
+export function buildSystemPrompt(): string {
+  const parts: string[] = [config.system];
+  
+  if (!skillLoader) {
+    return parts.join('\n\n---\n\n');
+  }
+  
+  // Level 1: 加载 always 技能的完整内容（用 XML 标签包裹）
+  const alwaysContent = skillLoader.loadAlwaysSkillsContent();
+  if (alwaysContent) {
+    parts.push(`# Active Skills
+
+The following skills are always loaded into your context:
+
+${alwaysContent}`);
+  }
+  
+  // Level 2: 其他技能只加载摘要 (JSON 格式，排除 always 技能)
+  const summary = skillLoader.buildSkillsSummary(true);
+  if (summary && summary !== '{"skills":[]}') {
+    parts.push(`# Available Skills
+
+The following skills extend your capabilities. To use a skill, read its SKILL.md file using the read tool.
+Skills with available=false need dependencies installed first.
+
+\`\`\`json
+${summary}
+\`\`\``);
+  }
+  
+  return parts.join('\n\n---\n\n');
+}
+
 export async function agentLoop(
   userMessage: string,
   sessionKey?: string
@@ -474,18 +517,8 @@ export async function agentLoop(
   // 获取当前会话消息（不包含 system）
   const sessionMessages = manager.getSession(currentSessionKey);
   
-  // 技能匹配：检测用户输入是否触发特定技能
-  let systemPrompt = config.system;
-  if (skillLoader) {
-    const skillMatch = skillLoader.getBestMatch(userMessage);
-    if (skillMatch) {
-      const skillPrompt = skillLoader.generateSkillPrompt(userMessage);
-      if (skillPrompt) {
-        systemPrompt += skillPrompt;
-        console.log(`🎯 激活技能：${skillMatch.skill.name}`);
-      }
-    }
-  }
+  // 构建分层 system prompt（渐进式披露）
+  const systemPrompt = buildSystemPrompt();
   
   // 构建消息数组：system + 会话历史 + 用户消息
   const messages: Message[] = [

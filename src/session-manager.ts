@@ -574,7 +574,7 @@ export class SessionManager {
 
       default:
         return {
-          isCommand: true,
+          isCommand: false,
           command: 'unknown',
           output: `❌ 未知命令 "/${command}"，输入 /help 查看可用命令`,
           shouldContinue: false
@@ -614,9 +614,16 @@ export class SessionManager {
 // 单例实例
 let defaultManager: SessionManager | null = null;
 
-export function getDefaultManager(): SessionManager {
+export function getDefaultManager(config?: Partial<SessionManagerConfig>): SessionManager {
   if (!defaultManager) {
-    defaultManager = new SessionManager();
+    defaultManager = new SessionManager(config);
   }
   return defaultManager;
+}
+
+/**
+ * 重置默认管理器（用于测试或重新初始化）
+ */
+export function resetDefaultManager(): void {
+  defaultManager = null;
 }

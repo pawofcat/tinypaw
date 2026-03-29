@@ -1,0 +1,19 @@
+{
+  "meta": {
+    "key": "default",
+    "createdAt": 1774777799870,
+    "updatedAt": 1774777799871,
+    "messageCount": 2,
+    "tokenCount": 4
+  },
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello"
+    },
+    {
+      "role": "assistant",
+      "content": "Hi there"
+    }
+  ]
+}

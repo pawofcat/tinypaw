@@ -1,42 +1,46 @@
-# 记忆技能 (Memory)
+---
+name: memory
+description: Two-layer memory system with grep-based recall. Use when the user wants to remember something, mentions memory, or asks about past events.
+always: true
+---
 
-## 描述
-帮助用户记录和管理重要信息，支持长期记忆和短期笔记。
+# Memory
 
-## 触发条件
-- 用户说"记住..."、"记下来"、"添加到记忆"
-- 用户询问之前提到过的内容
-- 用户提到"我的笔记"、"之前的记录"
+## Configuration
 
-## 工具
-- `memory_search` - 搜索记忆内容
-- `memory_get` - 读取记忆文件
-- `memory_append` - 追加记忆内容
+Memory path is configured in `config.json`:
 
-## 使用示例
-
-### 记录信息
-```
-用户：记住明天下午 3 点开会
-助手：好的，已记录到今日记忆中。
+```json
+{
+  "memory": {
+    "path": "./workspace/memory"
+  }
+}
 ```
 
-### 检索信息
+Default: `./workspace/memory`
+
+## Structure
+
+- `{memory.path}/MEMORY.md` — Long-term facts (preferences, project context, relationships)
+- `{memory.path}/HISTORY.md` — Append-only event log. Search with grep.
+
+## Search Past Events
+
+```bash
+grep -i "keyword" memory/HISTORY.md
 ```
-用户：我之前说过什么关于项目的事？
-助手：让我搜索一下... 找到了，你在 3 月 10 日提到项目需要在月底前完成。
-```
 
-## 记忆文件格式
+## When to Update MEMORY.md
 
-记忆保存在 `memory/YYYY-MM-DD.md` 文件中，按日期组织。
+Write important facts immediately:
+- User preferences
+- Project context
+- Relationships
 
-```markdown
-# 2026-03-11
+## Tools
 
-## 重要事项
-- 明天下午 3 点开会
-
-## 笔记
-- 项目进度：完成 80%
-```
+Use the built-in memory tools:
+- `memory_search` - Search memory files
+- `memory_get` - Read a specific memory file
+- `memory_append` - Append content to a memory file
