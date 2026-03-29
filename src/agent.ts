@@ -11,6 +11,7 @@ import fetch from 'node-fetch';
 import { SessionManager, getDefaultManager } from './session-manager.js';
 import { withRetry, withTimeout, isNetworkError, isRateLimitError, formatError, sleep } from './retry.js';
 import { estimateConversationTokens, trimConversation, TokenCounter, getDefaultCounter } from './token-manager.js';
+import { SkillLoader, getDefaultLoader, initializeSkills } from './skill-loader.js';
 
 const exec = promisify(execCb);
 
@@ -125,6 +126,7 @@ let config: Config = {
 // 全局会话管理器和 token 计数器
 let sessionManager: SessionManager | null = null;
 let tokenCounter: TokenCounter | null = null;
+let skillLoader: SkillLoader | null = null;
 
 export async function loadConfig(path = './config.json'): Promise<Config> {
   try {
@@ -176,6 +178,33 @@ export function getTokenCounter(): TokenCounter {
     tokenCounter = getDefaultCounter();
   }
   return tokenCounter;
+}
+
+/**
+ * 设置技能加载器（由 CLI 初始化）
+ */
+export function setSkillLoader(loader: SkillLoader): void {
+  skillLoader = loader;
+}
+
+/**
+ * 初始化技能加载器
+ */
+export async function initializeSkillLoader(skillsPath?: string): Promise<SkillLoader> {
+  if (!skillLoader) {
+    skillLoader = await initializeSkills(skillsPath);
+  }
+  return skillLoader;
+}
+
+/**
+ * 获取技能加载器
+ */
+export function getSkillLoader(): SkillLoader {
+  if (!skillLoader) {
+    skillLoader = getDefaultLoader();
+  }
+  return skillLoader;
 }
 
 // ============================================================================
@@ -445,9 +474,22 @@ export async function agentLoop(
   // 获取当前会话消息（不包含 system）
   const sessionMessages = manager.getSession(currentSessionKey);
   
+  // 技能匹配：检测用户输入是否触发特定技能
+  let systemPrompt = config.system;
+  if (skillLoader) {
+    const skillMatch = skillLoader.getBestMatch(userMessage);
+    if (skillMatch) {
+      const skillPrompt = skillLoader.generateSkillPrompt(userMessage);
+      if (skillPrompt) {
+        systemPrompt += skillPrompt;
+        console.log(`🎯 激活技能：${skillMatch.skill.name}`);
+      }
+    }
+  }
+  
   // 构建消息数组：system + 会话历史 + 用户消息
   const messages: Message[] = [
-    { role: 'system', content: config.system },
+    { role: 'system', content: systemPrompt },
     ...sessionMessages,
     { role: 'user', content: userMessage }
   ];

@@ -4,8 +4,9 @@
  * 命令行交互接口 - 支持会话管理命令
  */
 
-import { loadConfig, agentLoop, initializeSessionStore, getTokenCounter, getConfig, setSessionManager } from './agent.js';
+import { loadConfig, agentLoop, initializeSessionStore, getTokenCounter, getConfig, setSessionManager, setSkillLoader, initializeSkillLoader } from './agent.js';
 import { SessionManager, getDefaultManager } from './session-manager.js';
+import { SkillLoader, initializeSkills } from './skill-loader.js';
 import { createInterface } from 'node:readline';
 import { mkdir, readFile } from 'node:fs/promises';
 
@@ -22,6 +23,10 @@ async function main(): Promise<void> {
   
   // 将 sessionManager 传递给 agent 模块
   setSessionManager(sessionManager);
+  
+  // 初始化技能加载器
+  const loader = await initializeSkills('./skills');
+  setSkillLoader(loader);
 
   const rl = createInterface({
     input: process.stdin,
