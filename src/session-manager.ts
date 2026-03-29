@@ -95,6 +95,11 @@ export class SessionManager {
     // 加载现有会话
     await this.loadAllSessions();
     
+    // 确保 default 会话存在
+    if (!this.sessions.has('default')) {
+      this.getSession('default');
+    }
+    
     console.log(`[SessionManager] 已加载 ${this.sessions.size} 个会话，当前会话：${this.currentSessionKey}`);
   }
 
